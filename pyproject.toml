@@ -1,0 +1,13 @@
+[project]
+name = "hivewiki-builder"
+version = "0.1.0"
+description = "Content processing and wiki generation service for HiveWiki"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+[dependency-groups]
+dev = ["pre-commit>=4.5.1"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
