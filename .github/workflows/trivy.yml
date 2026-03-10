@@ -1,0 +1,17 @@
+name: Trivy Security Scan
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - main
+  push:
+    branches:
+      - main
+
+jobs:
+  trivy:
+    uses: Hallym-Workerbees/hivewiki-ci/.github/workflows/trivy.yml@main
+    with:
+      scan_type: fs
+      scanners: vuln,misconfig
