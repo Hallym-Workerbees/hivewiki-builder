@@ -1,6 +1,6 @@
 repos:
   - repo: https://github.com/astral-sh/uv-pre-commit
-    rev: 0.11.3
+    rev: 0.11.6
     hooks:
       - id: uv-lock
 
@@ -16,7 +16,7 @@ repos:
       - id: check-added-large-files
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.9
+    rev: v0.15.10
     hooks:
       - id: ruff-check
         args: [--fix]
@@ -28,7 +28,7 @@ repos:
       - id: gitleaks
 
   - repo: https://github.com/commitizen-tools/commitizen
-    rev: v4.13.9
+    rev: v4.13.10
     hooks:
       - id: commitizen
         stages: [commit-msg]
