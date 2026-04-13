@@ -4,7 +4,11 @@ version = "0.1.0"
 description = "Content processing and wiki generation service for HiveWiki"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
-dependencies = []
+dependencies = [
+    "knowledge-storm>=1.1.1",
+    "psycopg2-binary>=2.9.11",
+    "python-dotenv>=1.2.2",
+]
 
 [dependency-groups]
 dev = ["pre-commit>=4.5.1"]
