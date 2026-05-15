@@ -9,6 +9,7 @@ from storm_engine.wiki_runner import clean_title
 
 def fetch_notices_from_db(limit: int = 10) -> list[dict]:
     conn = None
+    cursor = None
     notices: list[dict] = []
 
     try:
@@ -52,8 +53,9 @@ def fetch_notices_from_db(limit: int = 10) -> list[dict]:
         return []
 
     finally:
-        if conn:
+        if cursor:
             cursor.close()
+        if conn:
             conn.close()
 
 
