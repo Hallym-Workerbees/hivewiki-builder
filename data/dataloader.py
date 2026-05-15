@@ -1,10 +1,13 @@
 import json
+import logging
 from pathlib import Path
 
 import psycopg2
 
 from config import pipeline, settings
 from storm_engine.wiki_runner import clean_title
+
+logger = logging.getLogger(__name__)
 
 
 def fetch_notices_from_db(limit: int = 10) -> list[dict]:
@@ -32,7 +35,7 @@ def fetch_notices_from_db(limit: int = 10) -> list[dict]:
                 try:
                     data = json.loads(data)
                 except json.JSONDecodeError:
-                    print(f"JSON 파싱 에러 발생 데이터: {data[:50]}...")
+                    logger.warning(f"JSON 파싱 에러 발생 데이터: {data[:50]}...")
                     continue
 
             notices.append(
@@ -45,11 +48,11 @@ def fetch_notices_from_db(limit: int = 10) -> list[dict]:
                 }
             )
 
-        print(f"[DB] {len(notices)}개 데이터 불러옴")
+        logger.info(f"[DB] {len(notices)}개 데이터 불러옴")
         return notices
 
     except Exception as e:
-        print(f"[DB 오류] 데이터 불러오는 중 문제 발생: {e}")
+        logger.error(f"[DB 오류] 데이터 불러오는 중 문제 발생: {e}")
         return []
 
     finally:
@@ -74,7 +77,7 @@ def load_notices_from_json(path: Path) -> list[dict]:
         for item in raw
     ]
 
-    print(f"[JSON] {path.name}에서 {len(notices)}건 로드")
+    logger.info(f"[JSON] {path.name}에서 {len(notices)}건 로드")
     return notices
 
 

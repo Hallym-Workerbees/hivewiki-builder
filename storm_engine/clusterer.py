@@ -1,3 +1,4 @@
+import logging
 import re
 import time
 from collections import defaultdict
@@ -7,6 +8,8 @@ import numpy as np
 from numpy.linalg import norm
 
 from config import pipeline, settings
+
+logger = logging.getLogger(__name__)
 
 FILENAME_SYSTEM = (
     "You generate concise Korean filenames for academic notice clusters. "
@@ -48,10 +51,12 @@ def embed_notices(notices: list[dict], client) -> np.ndarray:
     texts = [
         f"{n['title']}\n{n['content'][: pipeline.EMBED_CONTENT_CHARS]}" for n in notices
     ]
-    print(f"[임베딩 요청] {len(texts)}건 일괄...")
+    logger.info(f"[임베딩 요청] {len(texts)}건 일괄...")
     resp = client.embeddings.create(model=settings.EMBEDDING_MODEL, input=texts)
     embeddings = np.array([d.embedding for d in resp.data])
-    print(f"[임베딩 완료] shape={embeddings.shape}, tokens={resp.usage.total_tokens:,}")
+    logger.info(
+        f"[임베딩 완료] shape={embeddings.shape}, tokens={resp.usage.total_tokens:,}"
+    )
     return embeddings
 
 
@@ -73,12 +78,14 @@ def cluster_by_similarity(
         groups[uf.find(i)].append(i)
     cluster_list = sorted(groups.values(), key=lambda c: (-len(c), c[0]))
 
-    print(f"[클러스터링 완료] threshold={threshold}, 총 그룹 수: {len(cluster_list)}")
+    logger.info(
+        f"[클러스터링 완료] threshold={threshold}, 총 그룹 수: {len(cluster_list)}"
+    )
     size_counts: dict[int, int] = defaultdict(int)
     for c in cluster_list:
         size_counts[len(c)] += 1
     for size in sorted(size_counts.keys(), reverse=True):
-        print(f"  크기 {size:>2}: {size_counts[size]}개")
+        logger.info(f"  크기 {size:>2}: {size_counts[size]}개")
     return cluster_list
 
 
@@ -111,7 +118,7 @@ def assign_cluster_filenames(
     clusters: list[list[int]], notices: list[dict], client
 ) -> list[str]:
     multi_indices = [cid for cid, c in enumerate(clusters) if len(c) >= 2]
-    print(
+    logger.info(
         f"[파일명 LLM] 다중 클러스터 {len(multi_indices)}개 → "
         f"max_workers={pipeline.FILENAME_LLM_MAX_WORKERS}"
     )
@@ -133,11 +140,11 @@ def assign_cluster_filenames(
             try:
                 name = fut.result()
                 llm_names[cid] = name
-                print(f"  [{time.time() - t0:5.1f}s] Cluster {cid:02d} → {name}")
+                logger.info(f"  [{time.time() - t0:5.1f}s] Cluster {cid:02d} → {name}")
             except Exception as e:
-                print(f"  [실패] Cluster {cid:02d}: {e}")
+                logger.warning(f"  [실패] Cluster {cid:02d}: {e}")
                 llm_names[cid] = _sanitize_filename(notices[clusters[cid][0]]["title"])
-    print(f"[파일명 LLM 완료] {time.time() - t0:.1f}초")
+    logger.info(f"[파일명 LLM 완료] {time.time() - t0:.1f}초")
 
     used_names: set[str] = set()
     filenames: list[str] = []

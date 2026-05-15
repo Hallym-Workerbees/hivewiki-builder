@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 
 from openai import OpenAI
@@ -15,17 +16,24 @@ from storm_engine.wiki_runner import (
     write_single_notice_md,
 )
 
+logger = logging.getLogger(__name__)
+
 
 def main() -> None:
-    print("=== 한림대 학사공지 클러스터링 위키 파이프라인 ===")
-    print(f"[설정] DATA_SOURCE={pipeline.DATA_SOURCE}")
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
+
+    logger.info("=== 한림대 학사공지 클러스터링 위키 파이프라인 ===")
+    logger.info(f"[설정] DATA_SOURCE={pipeline.DATA_SOURCE}")
 
     pipeline.FINAL_WIKI_DIR.mkdir(parents=True, exist_ok=True)
     pipeline.STORM_WORK_DIR.mkdir(parents=True, exist_ok=True)
 
     notices = load_notices()
     if not notices:
-        print("[에러] 불러올 수 있는 데이터 없음. 파이프라인 종료.")
+        logger.error("[에러] 불러올 수 있는 데이터 없음. 파이프라인 종료.")
         return
 
     client = OpenAI(api_key=settings.OPENAI_API_KEY)
@@ -42,12 +50,12 @@ def main() -> None:
         cluster_notices = [notices[i] for i in indices]
 
         if len(indices) == 1:
-            print(f"\n[Cluster {cid:02d}] 단독 → {filename}.md")
+            logger.info(f"[Cluster {cid:02d}] 단독 → {filename}.md")
             write_single_notice_md(cluster_notices[0], final_path)
             results.append((cid, filename, "single", final_path.stat().st_size))
         else:
-            print(
-                f"\n[Cluster {cid:02d}] 다중(size={len(indices)}) → STORM ({filename})"
+            logger.info(
+                f"[Cluster {cid:02d}] 다중(size={len(indices)}) → STORM ({filename})"
             )
             attributed = run_storm_for_cluster(
                 cluster_notices, filename, lm_configs, pipeline.STORM_WORK_DIR
@@ -61,7 +69,7 @@ def main() -> None:
             final_path.write_text(header + attributed, encoding="utf-8")
             results.append((cid, filename, "storm", final_path.stat().st_size))
 
-    print(f"\n[완료] {len(results)}개 파일 → {pipeline.FINAL_WIKI_DIR}")
+    logger.info(f"[완료] {len(results)}개 파일 → {pipeline.FINAL_WIKI_DIR}")
 
 
 if __name__ == "__main__":
