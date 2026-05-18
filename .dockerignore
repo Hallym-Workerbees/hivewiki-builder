@@ -1,0 +1,71 @@
+# Git
+.git
+.github
+.gitignore
+
+# Docker / CI
+.dockerignore
+.trivyignore
+Dockerfile*
+docker-compose*
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Python virtual environments
+.venv
+venv
+env
+ENV
+
+# Python cache
+__pycache__
+*.py[cod]
+*$py.class
+
+# Tool caches
+.cache
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.pyre
+.tox
+.nox
+
+# Coverage
+.coverage
+.coverage.*
+htmlcov
+cover
+
+# Build artifacts
+build
+dist
+*.egg-info
+.eggs
+wheels
+
+# IDE / OS
+.idea
+.vscode
+.DS_Store
+
+# Logs
+*.log
+
+# Local databases
+*.sqlite3
+*.db
+
+# Runtime outputs
+output
+outputs
+
+# Tests / docs
+tests
+docs
+
+# Misc
+*.md
