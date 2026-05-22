@@ -20,7 +20,7 @@ DB_USER = os.getenv("DB_USER", "")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "")
 
 # Redis Config
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+REDIS_URL = os.getenv("REDIS_URL", "")
 WIKIFY_QUEUE = os.getenv("WIKIFY_QUEUE", "wikify_queue")
 
 # LLM Model Config
