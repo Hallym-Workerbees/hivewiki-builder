@@ -19,6 +19,10 @@ DB_NAME = os.getenv("DB_NAME", "")
 DB_USER = os.getenv("DB_USER", "")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "")
 
+# Redis Config
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+WIKIFY_QUEUE = os.getenv("WIKIFY_QUEUE", "wikify_queue")
+
 # LLM Model Config
 EMBEDDING_MODEL = "text-embedding-3-small"
 AGENT_MODEL = "gpt-4o-mini"
