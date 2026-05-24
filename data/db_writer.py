@@ -59,6 +59,57 @@ def insert_wiki(
     return wiki_document_id
 
 
+def mark_job_started(conn, job_id: int) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE ingestion_jobs SET started_at = NOW() WHERE id = %s",
+            (job_id,),
+        )
+    logger.info(f"[DB] job {job_id} started_at marked")
+
+
+def slug_exists(conn, slug: str) -> bool:
+    with conn.cursor() as cur:
+        cur.execute("SELECT 1 FROM wiki_documents WHERE slug = %s LIMIT 1", (slug,))
+        return cur.fetchone() is not None
+
+
+def make_unique_slug(conn, base: str) -> str:
+    slug = base
+    suffix = 1
+    while slug_exists(conn, slug):
+        suffix += 1
+        slug = f"{base}-{suffix}"
+    return slug
+
+
+def insert_chunk_with_embedding(
+    conn,
+    *,
+    source_document_id: int,
+    content_text: str,
+    embedding: list[float],
+) -> str:
+    embedding_literal = "[" + ",".join(f"{v:.8f}" for v in embedding) + "]"
+    with conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO source_chunks "
+            "(id, source_document_id, content_text, chunk_index, created_at) "
+            "VALUES (gen_random_uuid(), %s, %s, 0, NOW()) "
+            "RETURNING id",
+            (source_document_id, content_text),
+        )
+        chunk_id = cur.fetchone()[0]
+        cur.execute(
+            "INSERT INTO chunk_embeddings "
+            "(id, source_chunk_id, embedding, embedding_model, created_at) "
+            "VALUES (gen_random_uuid(), %s, %s::vector, %s, NOW())",
+            (chunk_id, embedding_literal, settings.EMBEDDING_MODEL),
+        )
+    logger.info(f"[DB] chunk + embedding inserted chunk_id={chunk_id}")
+    return chunk_id
+
+
 def mark_job_completed(conn, job_id: int, source_document_id: int) -> None:
     with conn.cursor() as cur:
         cur.execute(
