@@ -18,6 +18,18 @@ DB_PORT = os.getenv("DB_PORT", "5432")
 DB_NAME = os.getenv("DB_NAME", "")
 DB_USER = os.getenv("DB_USER", "")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "")
+DATABASE_DSN = os.getenv(
+    "DATABASE_DSN",
+    f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}",
+)
+
+# Redis Config
+REDIS_URL = os.getenv("REDIS_URL", "")
+REDIS_QUEUE_NAME = os.getenv("REDIS_QUEUE_NAME", "wikify_queue")
+REDIS_SOCKET_TIMEOUT_SECONDS = int(os.getenv("REDIS_SOCKET_TIMEOUT_SECONDS", "5"))
+REDIS_HEALTH_CHECK_INTERVAL_SECONDS = int(
+    os.getenv("REDIS_HEALTH_CHECK_INTERVAL_SECONDS", "30")
+)
 
 # LLM Model Config
 EMBEDDING_MODEL = "text-embedding-3-small"
