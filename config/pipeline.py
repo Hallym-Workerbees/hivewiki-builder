@@ -1,13 +1,8 @@
-import os
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-DATA_SOURCE = os.getenv("DATA_SOURCE", "json").lower()
-
-INPUT_JSON_PATH = PROJECT_ROOT / "outputs" / "notices_sample1.json"
 STORM_WORK_DIR = PROJECT_ROOT / "output"
-FINAL_WIKI_DIR = PROJECT_ROOT / "outputs" / "wiki"
 
 CLUSTER_THRESHOLD = 0.85
 EMBED_CONTENT_CHARS = 500
@@ -20,5 +15,3 @@ FILENAME_MAX_LEN = 30
 FILENAME_LLM_MAX_WORKERS = 5
 FILENAME_LLM_TIMEOUT = 30.0
 FILENAME_LLM_TEMPERATURE = 0.3
-
-DB_FETCH_LIMIT = 50
