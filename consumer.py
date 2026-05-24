@@ -39,10 +39,10 @@ def main() -> None:
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
     client = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True)
-    logger.info(f"[컨슈머 시작] queue={settings.WIKIFY_QUEUE}")
+    logger.info(f"[컨슈머 시작] queue={settings.REDIS_QUEUE_NAME}")
 
     while True:
-        _, raw = client.blpop(settings.WIKIFY_QUEUE)
+        _, raw = client.blpop(settings.REDIS_QUEUE_NAME)
         try:
             payload = parse_payload(raw)
         except Exception:
