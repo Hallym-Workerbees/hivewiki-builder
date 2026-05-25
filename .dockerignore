@@ -27,6 +27,7 @@ __pycache__
 
 # Tool caches
 .cache
+.uv-cache
 .pytest_cache
 .ruff_cache
 .mypy_cache
