@@ -22,6 +22,7 @@ FROM python:3.12-slim-trixie AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 \
   PYTHONUNBUFFERED=1 \
   HOME="/home/app" \
+  DSP_CACHEDIR="/tmp/cachedir_joblib" \
   PATH="/app/.venv/bin:${PATH}"
 
 WORKDIR /app
