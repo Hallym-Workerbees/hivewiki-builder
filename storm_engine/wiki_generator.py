@@ -1,6 +1,7 @@
 import logging
 import re
 import shutil
+import time
 
 from openai import OpenAI
 
@@ -66,20 +67,69 @@ def _run_storm(notice: dict, lm_configs, job_id: int) -> str:
     pipeline.STORM_WORK_DIR.mkdir(parents=True, exist_ok=True)
     topic_dir = pipeline.STORM_WORK_DIR / topic
     if topic_dir.exists():
+        logger.info(
+            "[STAGE_START] job=%s stage=storm_cleanup path=%s",
+            job_id,
+            topic_dir,
+        )
         shutil.rmtree(topic_dir)
+        logger.info("[STAGE_DONE] job=%s stage=storm_cleanup", job_id)
     return run_storm_for_cluster([notice], topic, lm_configs, pipeline.STORM_WORK_DIR)
 
 
 def generate_wiki(payload: JobPayload, lm_configs, openai_client: OpenAI) -> dict:
-    logger.info(f"[STORM 시작] job={payload.job.id} title={payload.document.title}")
+    started = time.perf_counter()
+    logger.info(
+        "[STAGE_START] job=%s stage=wiki_generation title=%r",
+        payload.job.id,
+        payload.document.title,
+    )
     notice = _payload_to_notice(payload)
+
+    stage_started = time.perf_counter()
+    logger.info("[STAGE_START] job=%s stage=storm", payload.job.id)
     content_markdown = _run_storm(notice, lm_configs, payload.job.id)
+    logger.info(
+        "[STAGE_DONE] job=%s stage=storm elapsed=%.2fs content_chars=%s",
+        payload.job.id,
+        time.perf_counter() - stage_started,
+        len(content_markdown),
+    )
 
-    logger.info(f"[summary 생성] model={settings.AGENT_MODEL}")
+    stage_started = time.perf_counter()
+    logger.info(
+        "[STAGE_START] job=%s stage=summary model=%s content_chars=%s",
+        payload.job.id,
+        settings.AGENT_MODEL,
+        len(content_markdown),
+    )
     summary = generate_summary(openai_client, content_markdown)
+    logger.info(
+        "[STAGE_DONE] job=%s stage=summary elapsed=%.2fs summary_chars=%s",
+        payload.job.id,
+        time.perf_counter() - stage_started,
+        len(summary),
+    )
 
-    logger.info(f"[embedding 생성] model={settings.EMBEDDING_MODEL}")
+    stage_started = time.perf_counter()
+    logger.info(
+        "[STAGE_START] job=%s stage=embedding model=%s input_chars=%s",
+        payload.job.id,
+        settings.EMBEDDING_MODEL,
+        min(len(payload.document.body_text), EMBEDDING_INPUT_MAX_CHARS),
+    )
     embedding = compute_embedding(openai_client, payload.document.body_text)
+    logger.info(
+        "[STAGE_DONE] job=%s stage=embedding elapsed=%.2fs dimensions=%s",
+        payload.job.id,
+        time.perf_counter() - stage_started,
+        len(embedding),
+    )
+    logger.info(
+        "[STAGE_DONE] job=%s stage=wiki_generation elapsed=%.2fs",
+        payload.job.id,
+        time.perf_counter() - started,
+    )
 
     return {
         "title": payload.document.title,

@@ -1,11 +1,15 @@
 import json
+import logging
 import re
+import time
 from pathlib import Path
 
 import dspy
 from knowledge_storm import STORMWikiRunner, STORMWikiRunnerArguments
 
 from config import pipeline
+
+logger = logging.getLogger(__name__)
 
 
 def clean_title(raw: str) -> str:
@@ -30,6 +34,7 @@ class DBNoticeRetriever(dspy.Retrieve):
             if isinstance(query_or_queries, str)
             else query_or_queries
         )
+        started = time.perf_counter()
 
         results = []
         seen_urls = set(exclude_urls or [])
@@ -67,6 +72,13 @@ class DBNoticeRetriever(dspy.Retrieve):
                     }
                 )
 
+        logger.debug(
+            "[RETRIEVER] queries=%s notices=%s results=%s elapsed=%.2fs",
+            len(queries),
+            len(self.db_notices),
+            len(results),
+            time.perf_counter() - started,
+        )
         return results
 
 
@@ -134,6 +146,7 @@ _OUTLINE_BOILERPLATE_HEADINGS = {
 
 def _clean_outline_placeholders(outline_path: Path) -> None:
     if not outline_path.exists():
+        logger.warning("[WARN] outline_missing path=%s", outline_path)
         return
     lines = outline_path.read_text(encoding="utf-8").splitlines()
     cleaned: list[str] = []
@@ -152,6 +165,12 @@ def _clean_outline_placeholders(outline_path: Path) -> None:
         if not skip:
             cleaned.append(line)
     outline_path.write_text("\n".join(cleaned) + "\n", encoding="utf-8")
+    logger.info(
+        "[STAGE_DONE] stage=outline_cleanup path=%s original_lines=%s cleaned_lines=%s",
+        outline_path,
+        len(lines),
+        len(cleaned),
+    )
 
 
 def run_storm_for_cluster(
@@ -160,6 +179,17 @@ def run_storm_for_cluster(
     lm_configs,
     work_dir: Path = pipeline.STORM_WORK_DIR,
 ) -> str:
+    started = time.perf_counter()
+    logger.info(
+        "[STAGE_START] stage=storm_runner topic=%s notices=%s work_dir=%s "
+        "max_conv_turn=%s max_perspective=%s retriever_k=%s",
+        filename,
+        len(cluster_notices),
+        work_dir,
+        pipeline.STORM_MAX_CONV_TURN,
+        pipeline.STORM_MAX_PERSPECTIVE,
+        min(pipeline.STORM_RETRIEVER_K, len(cluster_notices)),
+    )
     rm = DBNoticeRetriever(
         db_notices=cluster_notices,
         k=min(pipeline.STORM_RETRIEVER_K, len(cluster_notices)),
@@ -173,6 +203,8 @@ def run_storm_for_cluster(
         lm_configs,
         rm,
     )
+    run_started = time.perf_counter()
+    logger.info("[STAGE_START] stage=storm_runner_run topic=%s", filename)
     runner.run(
         topic=filename,
         do_research=True,
@@ -181,9 +213,24 @@ def run_storm_for_cluster(
         do_polish_article=True,
         remove_duplicate=True,
     )
+    logger.info(
+        "[STAGE_DONE] stage=storm_runner_run topic=%s elapsed=%.2fs",
+        filename,
+        time.perf_counter() - run_started,
+    )
     outline_path = work_dir / filename / "storm_gen_outline.txt"
     _clean_outline_placeholders(outline_path)
     polished = work_dir / filename / "storm_gen_article_polished.txt"
+    if not polished.exists():
+        logger.error("[ERROR] polished_article_missing path=%s", polished)
     raw = polished.read_text(encoding="utf-8")
     index_to_meta = load_url_to_info(work_dir, filename)
+    logger.info(
+        "[STAGE_DONE] stage=storm_runner topic=%s elapsed=%.2fs article_chars=%s "
+        "citations=%s",
+        filename,
+        time.perf_counter() - started,
+        len(raw),
+        len(index_to_meta),
+    )
     return replace_citations(raw, index_to_meta)

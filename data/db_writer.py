@@ -1,4 +1,5 @@
 import logging
+import time
 from contextlib import contextmanager
 
 import psycopg2
@@ -13,12 +14,17 @@ WIKI_STATUS_FAILED = "FAILED"
 
 @contextmanager
 def transaction():
+    started = time.perf_counter()
     conn = psycopg2.connect(settings.DATABASE_DSN)
     try:
         with conn:
             yield conn
     finally:
         conn.close()
+        logger.debug(
+            "[DB] transaction_closed elapsed=%.2fs",
+            time.perf_counter() - started,
+        )
 
 
 def insert_wiki(
@@ -55,7 +61,12 @@ def insert_wiki(
             (revision_id, wiki_document_id),
         )
 
-    logger.info(f"[DB] wiki_document 생성 id={wiki_document_id}")
+    logger.info(
+        "[DB] action=insert_wiki wiki_document=%s slug=%s revision=%s",
+        wiki_document_id,
+        slug,
+        revision_id,
+    )
     return wiki_document_id
 
 
@@ -65,7 +76,11 @@ def mark_job_started(conn, job_id: int) -> None:
             "UPDATE ingestion_jobs SET started_at = NOW() WHERE id = %s",
             (job_id,),
         )
-    logger.info(f"[DB] job {job_id} started_at marked")
+        rowcount = cur.rowcount
+    if rowcount == 0:
+        logger.warning("[WARN] action=mark_job_started job=%s rows=0", job_id)
+    else:
+        logger.info("[DB] action=mark_job_started job=%s rows=%s", job_id, rowcount)
 
 
 def slug_exists(conn, slug: str) -> bool:
@@ -106,7 +121,12 @@ def insert_chunk_with_embedding(
             "VALUES (gen_random_uuid(), %s, %s::vector, %s, NOW())",
             (chunk_id, embedding_literal, settings.EMBEDDING_MODEL),
         )
-    logger.info(f"[DB] chunk + embedding inserted chunk_id={chunk_id}")
+    logger.info(
+        "[DB] action=insert_chunk_embedding source_document=%s chunk=%s dimensions=%s",
+        source_document_id,
+        chunk_id,
+        len(embedding),
+    )
     return chunk_id
 
 
@@ -118,12 +138,21 @@ def mark_job_completed(conn, job_id: int, source_document_id: int) -> None:
             "WHERE id = %s",
             (job_id,),
         )
+        job_rows = cur.rowcount
         cur.execute(
             "UPDATE source_documents SET wiki_status = %s, body_text = NULL "
             "WHERE id = %s",
             (WIKI_STATUS_DONE, source_document_id),
         )
-    logger.info(f"[DB] job {job_id} COMPLETED")
+        source_rows = cur.rowcount
+    logger.info(
+        "[DB] action=mark_job_completed job=%s source_document=%s job_rows=%s "
+        "source_rows=%s",
+        job_id,
+        source_document_id,
+        job_rows,
+        source_rows,
+    )
 
 
 def mark_job_failed(
@@ -140,4 +169,9 @@ def mark_job_failed(
             "UPDATE source_documents SET wiki_status = %s WHERE id = %s",
             (WIKI_STATUS_FAILED, source_document_id),
         )
-    logger.warning(f"[DB] job {job_id} FAILED: {error_message}")
+    logger.warning(
+        "[DB] action=mark_job_failed job=%s source_document=%s error=%r",
+        job_id,
+        source_document_id,
+        error_message[:500],
+    )
