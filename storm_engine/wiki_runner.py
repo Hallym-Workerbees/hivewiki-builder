@@ -118,6 +118,42 @@ def write_single_notice_md(notice: dict, filepath: Path) -> None:
     filepath.write_text("\n".join(parts) + "\n", encoding="utf-8")
 
 
+_OUTLINE_BOILERPLATE_HEADINGS = {
+    "Academic Sources",
+    "Official Documents",
+    "Related Literature",
+    "Official Website",
+    "Related Organizations",
+    "Additional Resources",
+    "References",
+    "Further Reading",
+    "See Also",
+    "External Links",
+}
+
+
+def _clean_outline_placeholders(outline_path: Path) -> None:
+    if not outline_path.exists():
+        return
+    lines = outline_path.read_text(encoding="utf-8").splitlines()
+    cleaned: list[str] = []
+    skip = False
+    for line in lines:
+        stripped = line.strip()
+        is_top_heading = stripped.startswith("# ") and not stripped.startswith("## ")
+        is_sub_heading = stripped.startswith("## ") and not stripped.startswith("### ")
+        if is_top_heading or is_sub_heading:
+            heading_text = stripped.lstrip("#").strip()
+            if heading_text in _OUTLINE_BOILERPLATE_HEADINGS:
+                skip = True
+                continue
+            if is_top_heading:
+                skip = False
+        if not skip:
+            cleaned.append(line)
+    outline_path.write_text("\n".join(cleaned) + "\n", encoding="utf-8")
+
+
 def run_storm_for_cluster(
     cluster_notices: list[dict],
     filename: str,
@@ -143,7 +179,10 @@ def run_storm_for_cluster(
         do_generate_outline=True,
         do_generate_article=True,
         do_polish_article=True,
+        remove_duplicate=True,
     )
+    outline_path = work_dir / filename / "storm_gen_outline.txt"
+    _clean_outline_placeholders(outline_path)
     polished = work_dir / filename / "storm_gen_article_polished.txt"
     raw = polished.read_text(encoding="utf-8")
     index_to_meta = load_url_to_info(work_dir, filename)
