@@ -22,7 +22,11 @@ FROM python:3.12-slim-trixie AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 \
   PYTHONUNBUFFERED=1 \
   HOME="/home/app" \
+  USER="app" \
+  LOGNAME="app" \
+  XDG_CACHE_HOME="/tmp/.cache" \
   DSP_CACHEDIR="/tmp/cachedir_joblib" \
+  TORCHINDUCTOR_CACHE_DIR="/tmp/torchinductor-cache" \
   PATH="/app/.venv/bin:${PATH}"
 
 WORKDIR /app
