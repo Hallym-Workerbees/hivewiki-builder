@@ -18,8 +18,6 @@ STORM은 다음 두 가지 성질이 이 도메인에 잘 맞습니다.
 - **다관점 시뮬레이션** — 한 공지를 여러 가상 전문가 관점에서 질의·정리해 구조화된 섹션 문서로 만듭니다.
 - **출처 추적성** — `[1]`, `[2]` 형식 인용을 보존하고, 후처리에서 실제 공지 링크(`hallym.ac.kr/...`)로 치환합니다.
 
-현재는 **공지 1건 = 위키 1건** (stage 0) 구성으로 운영하며,
-관련 공지 묶음 처리(KNN 클러스터링)는 stage 1에서 도입 검토 중입니다.
 
 ---
 
@@ -29,18 +27,18 @@ STORM은 다음 두 가지 성질이 이 도메인에 잘 맞습니다.
 
 ```mermaid
 flowchart TD
-    A([Redis 큐: 공지 1건]) --> B
+    A([Redis 큐]) --> B
     subgraph STORM["STORM 엔진"]
       direction TB
-      B["① 관점 발견<br/>Agent LM"] --> C
-      C["② 대화 시뮬레이션<br/>Agent LM ↔ DBNoticeRetriever"] --> D
-      D["③ 아웃라인 생성<br/>Agent LM + 보일러플레이트 제거"] --> E
-      E["④ 본문 작성<br/>Synthesis LM (한국어 강제)"] --> F
-      F["⑤ 다듬기 + 인용 치환<br/>remove_duplicate · [N]→출처 링크"]
+      B["① 관점 발견"] --> C
+      C["② 대화 시뮬레이션"] --> D
+      D["③ 아웃라인 생성"] --> E
+      E["④ 본문 작성"] --> F
+      F["⑤ 다듬기 + 인용 치환"]
     end
     F --> G([위키 마크다운])
-    G --> H["⑥ 요약 + 임베딩<br/>Agent LM + Embedding"]
-    H --> I[("PostgreSQL<br/>wiki_documents · wiki_revisions<br/>source_chunks · chunk_embeddings")]
+    G --> H["⑥ 요약 + 임베딩"]
+    H --> I[("PostgreSQL")]
 ```
 
 각 단계의 세부 동작은 다음과 같습니다.
@@ -50,7 +48,7 @@ flowchart TD
 3. **아웃라인 생성** — 누적된 Q&A를 바탕으로 Agent LM이 문서 골격을 만들고, 영어 보일러플레이트 섹션(`References`, `See Also`, `Academic Sources` 등)은 후처리(`_clean_outline_placeholders`)로 제거합니다.
 4. **본문 작성** — Synthesis LM(Claude)이 섹션별 본문을 한국어로 작성합니다. 영어 instruction이 LM에 그대로 전달되지 않도록 `ClaudeModel`의 `system` kwarg로 한국어 작성을 강제합니다.
 5. **다듬기 및 인용 치환** — `runner.run(remove_duplicate=True)`로 lexical 중복을 제거한 폴리싱 본문을 받고, `[N]` 인용을 `url_to_info.json` 매핑으로 `[출처: 제목](URL)`로 치환합니다.
-6. **요약 · 임베딩** — Agent LM이 위키 본문을 2~3문장으로 요약하고, OpenAI 임베딩으로 원문 청크 벡터를 생성합니다.
+6. **요약 · 임베딩** — Agent LM이 위키 본문을 2~3문장으로 요약하고, OpenAI 임베딩으로 원문 벡터를 생성합니다.
 
 산출물은 모두 PostgreSQL에 저장됩니다 — `wiki_documents`, `wiki_revisions`, `source_chunks`, `chunk_embeddings`.
 
@@ -67,7 +65,7 @@ flowchart TD
 |---|---|---|
 | Agent LM | OpenAI `gpt-4o-mini` | 관점 시뮬레이션 · 질문 생성 · 아웃라인 · 요약 |
 | Synthesis LM | Anthropic `claude-sonnet-4-6` | 본문 작성 · 다듬기 |
-| Embedding | OpenAI `text-embedding-3-small` | 청크 임베딩 (1536-dim) |
+| Embedding | OpenAI `text-embedding-3-small` | 임베딩 (1536-dim) |
 
 역할을 둘로 나눈 이유는 다음과 같습니다.
 - **Agent LM**은 짧은 응답을 다수 호출하는 영역이라 빠르고 저렴한 모델이 적합합니다.
@@ -79,7 +77,6 @@ flowchart TD
 
 ## 알려진 한계
 
-- **Semantic redundancy** — outline 생성기가 8~10 섹션을 강제하기 때문에, 공지 본문이 짧을 때 같은 사실(예: "추천 인원 5명, 평점 순 선발")이 한 문서에서 5~10회 반복될 수 있습니다. `remove_duplicate`는 lexical 중복만 잡습니다.
 - **Hyperparameter 효과** — `max_conv_turn`, `max_perspective`, `STORM_RETRIEVER_K` 3종을 27개 조합으로 sweep한 결과, 품질 변동은 호출 자체의 비결정성보다 작았습니다 (`evaluation/REPORT.md`).
   → 현재 운영값은 STORM 원논문 권장 baseline인 `turn=2, perspective=2, k=5`로 채택.
 
