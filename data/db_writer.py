@@ -105,6 +105,7 @@ def insert_chunk_with_embedding(
     content_text: str,
     embedding: list[float],
 ) -> str:
+    embedding_dim = len(embedding)
     embedding_literal = "[" + ",".join(f"{v:.8f}" for v in embedding) + "]"
     with conn.cursor() as cur:
         cur.execute(
@@ -117,15 +118,15 @@ def insert_chunk_with_embedding(
         chunk_id = cur.fetchone()[0]
         cur.execute(
             "INSERT INTO chunk_embeddings "
-            "(id, source_chunk_id, embedding, embedding_model, created_at) "
-            "VALUES (gen_random_uuid(), %s, %s::vector, %s, NOW())",
-            (chunk_id, embedding_literal, settings.EMBEDDING_MODEL),
+            "(id, source_chunk_id, embedding, embedding_model, embedding_dim, created_at) "
+            "VALUES (gen_random_uuid(), %s, %s::vector, %s, %s, NOW())",
+            (chunk_id, embedding_literal, settings.EMBEDDING_MODEL, embedding_dim),
         )
     logger.info(
         "[DB] action=insert_chunk_embedding source_document=%s chunk=%s dimensions=%s",
         source_document_id,
         chunk_id,
-        len(embedding),
+        embedding_dim,
     )
     return chunk_id
 
