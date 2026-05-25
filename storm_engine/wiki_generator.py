@@ -74,7 +74,30 @@ def _run_storm(notice: dict, lm_configs, job_id: int) -> str:
         )
         shutil.rmtree(topic_dir)
         logger.info("[STAGE_DONE] job=%s stage=storm_cleanup", job_id)
-    return run_storm_for_cluster([notice], topic, lm_configs, pipeline.STORM_WORK_DIR)
+    try:
+        return run_storm_for_cluster(
+            [notice],
+            topic,
+            lm_configs,
+            pipeline.STORM_WORK_DIR,
+        )
+    finally:
+        if topic_dir.exists():
+            logger.info(
+                "[STAGE_START] job=%s stage=storm_cleanup_final path=%s",
+                job_id,
+                topic_dir,
+            )
+            try:
+                shutil.rmtree(topic_dir)
+            except OSError:
+                logger.exception(
+                    "[ERROR] job=%s stage=storm_cleanup_final path=%s",
+                    job_id,
+                    topic_dir,
+                )
+            else:
+                logger.info("[STAGE_DONE] job=%s stage=storm_cleanup_final", job_id)
 
 
 def generate_wiki(payload: JobPayload, lm_configs, openai_client: OpenAI) -> dict:

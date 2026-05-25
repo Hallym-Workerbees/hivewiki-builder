@@ -1,8 +1,9 @@
+import os
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-STORM_WORK_DIR = PROJECT_ROOT / "output"
+STORM_WORK_DIR = Path(os.getenv("STORM_WORK_DIR", "/tmp/hivewiki-builder/storm"))
 
 CLUSTER_THRESHOLD = 0.85
 EMBED_CONTENT_CHARS = 500

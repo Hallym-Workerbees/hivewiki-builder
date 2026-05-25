@@ -5,7 +5,7 @@ import time
 import redis
 from openai import OpenAI
 
-from config import settings
+from config import pipeline, settings
 from data import db_writer
 from data.payload import JobPayload, parse_payload
 from storm_engine import wiki_generator
@@ -32,7 +32,7 @@ def log_runtime_environment() -> None:
     logger.info(
         "[START] runtime uid=%s gid=%s home=%s user=%s logname=%s "
         "tmp_writable=%s dsp_cachedir=%s torchinductor_cache_dir=%s "
-        "xdg_cache_home=%s",
+        "xdg_cache_home=%s storm_work_dir=%s",
         os.getuid(),
         os.getgid(),
         os.getenv("HOME", ""),
@@ -42,6 +42,7 @@ def log_runtime_environment() -> None:
         os.getenv("DSP_CACHEDIR", ""),
         os.getenv("TORCHINDUCTOR_CACHE_DIR", ""),
         os.getenv("XDG_CACHE_HOME", ""),
+        pipeline.STORM_WORK_DIR,
     )
 
 
