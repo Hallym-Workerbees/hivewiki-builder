@@ -5,11 +5,11 @@ from pathlib import Path
 from typing import Any
 
 from anthropic import Anthropic
+from data.dataloader import load_notices_from_json
 from knowledge_storm import STORMWikiRunner, STORMWikiRunnerArguments
 from openai import OpenAI
 
 from config import pipeline, settings
-from data.dataloader import load_notices_from_json
 from evaluation.metrics import Embedder, compute_metrics, make_openai_embedder
 from evaluation.rubric import score_rubric
 from storm_engine.clusterer import (
