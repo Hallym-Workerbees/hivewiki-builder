@@ -6,6 +6,7 @@ from pathlib import Path
 
 LM_PRICING_USD_PER_1M_TOKENS: dict[str, dict[str, float]] = {
     "gpt-4o-mini": {"prompt": 0.15, "completion": 0.60},
+    "claude-sonnet-4-6": {"prompt": 3.00, "completion": 15.00},
     "claude-3-5-sonnet-20240620": {"prompt": 3.00, "completion": 15.00},
     "text-embedding-3-small": {"prompt": 0.02, "completion": 0.0},
 }
