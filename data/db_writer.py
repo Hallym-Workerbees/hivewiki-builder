@@ -118,7 +118,8 @@ def insert_chunk_with_embedding(
         chunk_id = cur.fetchone()[0]
         cur.execute(
             "INSERT INTO chunk_embeddings "
-            "(id, source_chunk_id, embedding, embedding_model, embedding_dim, created_at) "
+            "(id, source_chunk_id, embedding, embedding_model, "
+            "embedding_dim, created_at) "
             "VALUES (gen_random_uuid(), %s, %s::vector, %s, %s, NOW())",
             (chunk_id, embedding_literal, settings.EMBEDDING_MODEL, embedding_dim),
         )
