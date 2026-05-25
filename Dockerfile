@@ -21,12 +21,13 @@ FROM python:3.12-slim-trixie AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
   PYTHONUNBUFFERED=1 \
-  HOME="/home/app" \
+  HOME="/tmp" \
   USER="app" \
   LOGNAME="app" \
-  XDG_CACHE_HOME="/tmp/.cache" \
-  DSP_CACHEDIR="/tmp/cachedir_joblib" \
-  TORCHINDUCTOR_CACHE_DIR="/tmp/torchinductor-cache" \
+  XDG_CACHE_HOME="/tmp/hivewiki-builder/.cache" \
+  DSP_CACHEDIR="/tmp/hivewiki-builder/dsp-cache" \
+  TORCHINDUCTOR_CACHE_DIR="/tmp/hivewiki-builder/torchinductor-cache" \
+  STORM_WORK_DIR="/tmp/hivewiki-builder/storm" \
   PATH="/app/.venv/bin:${PATH}"
 
 WORKDIR /app
@@ -34,9 +35,6 @@ WORKDIR /app
 RUN useradd --create-home --shell /usr/sbin/nologin app
 
 COPY --from=builder /app /app
-
-RUN mkdir -p output outputs/wiki && \
-  chown -R app:app output outputs
 
 USER app
 
