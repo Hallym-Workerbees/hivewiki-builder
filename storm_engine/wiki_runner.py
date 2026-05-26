@@ -8,6 +8,7 @@ import dspy
 from knowledge_storm import STORMWikiRunner, STORMWikiRunnerArguments
 
 from config import pipeline
+from storm_engine.outline_generator import generate_outline_from_notices
 
 logger = logging.getLogger(__name__)
 
@@ -173,6 +174,64 @@ def _clean_outline_placeholders(outline_path: Path) -> None:
     )
 
 
+def _outline_top_headings(outline_path: Path) -> set[str]:
+    if not outline_path.exists():
+        return set()
+    headings: set[str] = set()
+    for line in outline_path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped.startswith("# ") and not stripped.startswith("## "):
+            headings.add(stripped.lstrip("#").strip())
+    return headings
+
+
+def _strip_unknown_top_sections(article_path: Path, valid_headings: set[str]) -> None:
+    if not article_path.exists() or not valid_headings:
+        return
+    lines = article_path.read_text(encoding="utf-8").splitlines()
+    cleaned: list[str] = []
+    skip = False
+    for line in lines:
+        stripped = line.strip()
+        is_top = stripped.startswith("# ") and not stripped.startswith("## ")
+        if is_top:
+            heading_text = stripped.lstrip("#").strip()
+            if heading_text not in valid_headings:
+                skip = True
+                continue
+            skip = False
+        if not skip:
+            cleaned.append(line)
+    while cleaned and not cleaned[-1].strip():
+        cleaned.pop()
+    article_path.write_text("\n".join(cleaned) + "\n", encoding="utf-8")
+
+
+def _strip_outline_top_as_sub(article_path: Path, top_headings: set[str]) -> None:
+    if not article_path.exists() or not top_headings:
+        return
+    lines = article_path.read_text(encoding="utf-8").splitlines()
+    cleaned: list[str] = []
+    skip = False
+    for line in lines:
+        stripped = line.strip()
+        is_top = stripped.startswith("# ") and not stripped.startswith("## ")
+        is_sub = stripped.startswith("## ") and not stripped.startswith("### ")
+        if is_top:
+            skip = False
+        elif is_sub:
+            heading_text = stripped.lstrip("#").strip()
+            if heading_text in top_headings:
+                skip = True
+                continue
+            skip = False
+        if not skip:
+            cleaned.append(line)
+    while cleaned and not cleaned[-1].strip():
+        cleaned.pop()
+    article_path.write_text("\n".join(cleaned) + "\n", encoding="utf-8")
+
+
 def run_storm_for_cluster(
     cluster_notices: list[dict],
     filename: str,
@@ -203,12 +262,21 @@ def run_storm_for_cluster(
         lm_configs,
         rm,
     )
+
+    topic_dir = work_dir / filename
+    topic_dir.mkdir(parents=True, exist_ok=True)
+    outline_path = topic_dir / "storm_gen_outline.txt"
+    outline_path.write_text(
+        generate_outline_from_notices(cluster_notices) + "\n",
+        encoding="utf-8",
+    )
+
     run_started = time.perf_counter()
     logger.info("[STAGE_START] stage=storm_runner_run topic=%s", filename)
     runner.run(
         topic=filename,
         do_research=True,
-        do_generate_outline=True,
+        do_generate_outline=False,
         do_generate_article=True,
         do_polish_article=True,
         remove_duplicate=True,
@@ -218,11 +286,13 @@ def run_storm_for_cluster(
         filename,
         time.perf_counter() - run_started,
     )
-    outline_path = work_dir / filename / "storm_gen_outline.txt"
     _clean_outline_placeholders(outline_path)
     polished = work_dir / filename / "storm_gen_article_polished.txt"
     if not polished.exists():
         logger.error("[ERROR] polished_article_missing path=%s", polished)
+    top_headings = _outline_top_headings(outline_path)
+    _strip_unknown_top_sections(polished, top_headings)
+    _strip_outline_top_as_sub(polished, top_headings)
     raw = polished.read_text(encoding="utf-8")
     index_to_meta = load_url_to_info(work_dir, filename)
     logger.info(

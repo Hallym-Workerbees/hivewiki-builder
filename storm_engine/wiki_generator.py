@@ -63,7 +63,7 @@ def _payload_to_notice(payload: JobPayload) -> dict:
 
 
 def _run_storm(notice: dict, lm_configs, job_id: int) -> str:
-    topic = f"job-{job_id}"
+    topic = make_slug_base(notice["title"])
     pipeline.STORM_WORK_DIR.mkdir(parents=True, exist_ok=True)
     topic_dir = pipeline.STORM_WORK_DIR / topic
     if topic_dir.exists():
