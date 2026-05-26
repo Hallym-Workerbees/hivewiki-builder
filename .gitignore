@@ -211,3 +211,4 @@ outputs/
 .DS_Store
 Thumbs.db
 notebooks/
+tests/
