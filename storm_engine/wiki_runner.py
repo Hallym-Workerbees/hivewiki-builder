@@ -101,15 +101,26 @@ def load_url_to_info(work_dir: Path, topic: str) -> dict[int, dict]:
 
 
 def replace_citations(text: str, index_to_meta: dict[int, dict]) -> str:
+    cited: set[int] = set()
+
     def _replacer(m: re.Match) -> str:
         idx = int(m.group(1))
         if idx in index_to_meta:
-            t = index_to_meta[idx]["title"]
-            u = index_to_meta[idx]["url"]
-            return f"[출처: {t}]({u})"
+            cited.add(idx)
+            return f"[^{idx}]"
         return m.group(0)
 
-    return re.sub(r"\[(\d+)\]", _replacer, text)
+    body = re.sub(r"\[(\d+)\]", _replacer, text)
+
+    if not cited:
+        return body
+
+    refs = ["# 참고 문헌", ""]
+    for idx in sorted(cited):
+        meta = index_to_meta[idx]
+        refs.append(f"[^{idx}]: [{meta['title']}]({meta['url']})")
+
+    return body.rstrip() + "\n\n" + "\n".join(refs) + "\n"
 
 
 def write_single_notice_md(notice: dict, filepath: Path) -> None:
