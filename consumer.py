@@ -8,7 +8,7 @@ from openai import OpenAI
 from config import pipeline, settings
 from data import db_writer
 from data.payload import JobPayload, parse_payload
-from storm_engine import wiki_generator
+from storm_engine import validator, wiki_generator
 from storm_engine.llm_config import setup_llms
 
 logger = logging.getLogger(__name__)
@@ -74,6 +74,49 @@ def process_job(payload: JobPayload, lm_configs, openai_client: OpenAI) -> None:
             job.id,
             time.perf_counter() - stage_started,
         )
+
+        if pipeline.ENABLE_VALIDATION:
+            stage_started = time.perf_counter()
+            logger.info("[STAGE_START] job=%s stage=validation", job.id)
+            result = validator.validate(
+                wiki["content_markdown"],
+                payload.document.body_text,
+                openai_client,
+            )
+            for attempt in range(1, pipeline.MAX_VALIDATION_RETRIES + 1):
+                if result.passed:
+                    break
+                logger.info(
+                    "[STAGE_START] job=%s stage=repolish attempt=%s issues=%s",
+                    job.id,
+                    attempt,
+                    len(result.issues),
+                )
+                issues_text = validator.format_issues_for_prompt(result.issues)
+                wiki["content_markdown"] = wiki_generator.repolish_with_feedback(
+                    wiki["content_markdown"], issues_text
+                )
+                result = validator.validate(
+                    wiki["content_markdown"],
+                    payload.document.body_text,
+                    openai_client,
+                )
+                logger.info(
+                    "[STAGE_DONE] job=%s stage=repolish attempt=%s passed=%s "
+                    "remaining_issues=%s",
+                    job.id,
+                    attempt,
+                    result.passed,
+                    len(result.issues),
+                )
+            logger.info(
+                "[STAGE_DONE] job=%s stage=validation elapsed=%.2fs passed=%s "
+                "final_issues=%s",
+                job.id,
+                time.perf_counter() - stage_started,
+                result.passed,
+                len(result.issues),
+            )
 
         stage_started = time.perf_counter()
         logger.info("[STAGE_START] job=%s stage=db_write", job.id)

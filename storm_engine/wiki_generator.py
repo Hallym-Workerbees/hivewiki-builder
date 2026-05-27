@@ -3,6 +3,7 @@ import re
 import shutil
 import time
 
+import anthropic
 from openai import OpenAI
 
 from config import pipeline, settings
@@ -18,6 +19,25 @@ SUMMARY_PROMPT = (
 SUMMARY_MAX_TOKENS = 300
 EMBEDDING_INPUT_MAX_CHARS = 8000
 
+REPOLISH_SYSTEM_PROMPT = (
+    "당신은 한국어 위키 문서 편집자입니다. "
+    "검증 에이전트가 발견한 문제만 정확히 수정하고, 그 외 부분은 그대로 유지하세요. "
+    "마크다운 헤딩(#, ##), footnote 표기([^n]), # 참고 문헌 섹션을 보존하세요. "
+    "설명·해설·머리말 추가 금지. 수정된 위키 본문 전체만 출력하세요."
+)
+
+REPOLISH_USER_PROMPT = """검증에서 발견된 문제:
+
+{issues}
+
+원본 위키 본문:
+
+{wiki}
+
+위 문제들만 수정한 위키 본문 전체를 출력하세요."""
+
+REPOLISH_MAX_TOKENS = 4000
+
 
 def compute_embedding(client: OpenAI, text: str) -> list[float]:
     resp = client.embeddings.create(
@@ -25,6 +45,24 @@ def compute_embedding(client: OpenAI, text: str) -> list[float]:
         input=text[:EMBEDDING_INPUT_MAX_CHARS],
     )
     return resp.data[0].embedding
+
+
+def repolish_with_feedback(wiki_markdown: str, issues_text: str) -> str:
+    client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+    resp = client.messages.create(
+        model=settings.SYNTHESIS_MODEL,
+        max_tokens=REPOLISH_MAX_TOKENS,
+        system=REPOLISH_SYSTEM_PROMPT,
+        messages=[
+            {
+                "role": "user",
+                "content": REPOLISH_USER_PROMPT.format(
+                    issues=issues_text, wiki=wiki_markdown
+                ),
+            }
+        ],
+    )
+    return resp.content[0].text.strip()
 
 
 def generate_summary(client: OpenAI, content: str) -> str:
