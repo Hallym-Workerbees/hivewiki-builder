@@ -20,8 +20,6 @@ SUMMARY_PROMPT = (
 )
 SUMMARY_MAX_TOKENS = 300
 EMBEDDING_INPUT_MAX_CHARS = 8000
-RELATED_SECTION_HEADER = "## 관련 문서"
-WIKI_URL_TEMPLATE = "/wiki/{slug}"
 
 REPOLISH_SYSTEM_PROMPT = (
     "당신은 한국어 위키 문서 편집자입니다. "
@@ -126,18 +124,6 @@ def _build_cluster(payload: JobPayload, neighbors: list[NeighborChunk]) -> list[
     return [_payload_to_notice(payload)] + [_neighbor_to_notice(n) for n in neighbors]
 
 
-def _append_related_section(
-    content_markdown: str, related_wikis: list[RelatedWiki]
-) -> str:
-    if not related_wikis:
-        return content_markdown
-    lines = [RELATED_SECTION_HEADER, ""]
-    for wiki in related_wikis:
-        url = WIKI_URL_TEMPLATE.format(slug=wiki.slug)
-        lines.append(f"- [{wiki.title}]({url})")
-    return content_markdown.rstrip() + "\n\n" + "\n".join(lines) + "\n"
-
-
 def _run_storm(
     cluster_notices: list[dict],
     topic_slug: str,
@@ -214,8 +200,6 @@ def generate_wiki(
         time.perf_counter() - stage_started,
         len(content_markdown),
     )
-
-    content_markdown = _append_related_section(content_markdown, related_wikis)
 
     stage_started = time.perf_counter()
     logger.info(
