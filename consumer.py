@@ -125,9 +125,12 @@ def process_job(payload: JobPayload, lm_configs, openai_client: OpenAI) -> None:
         if pipeline.ENABLE_VALIDATION:
             stage_started = time.perf_counter()
             logger.info("[STAGE_START] job=%s stage=validation", job.id)
+            source_texts = [payload.document.body_text] + [
+                n.content_text for n in neighbors
+            ]
             result = validator.validate(
                 wiki["content_markdown"],
-                payload.document.body_text,
+                source_texts,
                 openai_client,
             )
             for attempt in range(1, pipeline.MAX_VALIDATION_RETRIES + 1):
@@ -145,7 +148,7 @@ def process_job(payload: JobPayload, lm_configs, openai_client: OpenAI) -> None:
                 )
                 result = validator.validate(
                     wiki["content_markdown"],
-                    payload.document.body_text,
+                    source_texts,
                     openai_client,
                 )
                 logger.info(
