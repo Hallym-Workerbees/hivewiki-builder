@@ -193,7 +193,7 @@ def insert_wiki_revision(
     return revision_id
 
 
-def mark_job_started(conn, job_id: int) -> None:
+def mark_job_started(conn, job_id: int) -> int:
     with conn.cursor() as cur:
         cur.execute(
             "UPDATE ingestion_jobs SET started_at = NOW() WHERE id = %s",
@@ -204,6 +204,7 @@ def mark_job_started(conn, job_id: int) -> None:
         logger.warning("[WARN] action=mark_job_started job=%s rows=0", job_id)
     else:
         logger.info("[DB] action=mark_job_started job=%s rows=%s", job_id, rowcount)
+    return rowcount
 
 
 def slug_exists(conn, slug: str) -> bool:

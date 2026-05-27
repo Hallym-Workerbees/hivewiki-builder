@@ -59,7 +59,14 @@ def process_job(payload: JobPayload, lm_configs, openai_client: OpenAI) -> None:
         stage_started = time.perf_counter()
         logger.info("[STAGE_START] job=%s stage=mark_started", job.id)
         with db_writer.transaction() as conn:
-            db_writer.mark_job_started(conn, job.id)
+            rows = db_writer.mark_job_started(conn, job.id)
+        if rows == 0:
+            logger.warning(
+                "[ABORT] job=%s source_document=%s reason=ingestion_jobs_row_missing",
+                job.id,
+                job.source_document_id,
+            )
+            return
         logger.info(
             "[STAGE_DONE] job=%s stage=mark_started elapsed=%.2fs",
             job.id,
@@ -125,9 +132,12 @@ def process_job(payload: JobPayload, lm_configs, openai_client: OpenAI) -> None:
         if pipeline.ENABLE_VALIDATION:
             stage_started = time.perf_counter()
             logger.info("[STAGE_START] job=%s stage=validation", job.id)
+            source_texts = [payload.document.body_text] + [
+                n.content_text for n in neighbors
+            ]
             result = validator.validate(
                 wiki["content_markdown"],
-                payload.document.body_text,
+                source_texts,
                 openai_client,
             )
             for attempt in range(1, pipeline.MAX_VALIDATION_RETRIES + 1):
@@ -145,7 +155,7 @@ def process_job(payload: JobPayload, lm_configs, openai_client: OpenAI) -> None:
                 )
                 result = validator.validate(
                     wiki["content_markdown"],
-                    payload.document.body_text,
+                    source_texts,
                     openai_client,
                 )
                 logger.info(

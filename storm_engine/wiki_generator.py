@@ -70,7 +70,12 @@ def repolish_with_feedback(wiki_markdown: str, issues_text: str) -> str:
             }
         ],
     )
-    return resp.content[0].text.strip()
+    text = resp.content[0].text.strip()
+    m = re.search(r"^#\s+", text, flags=re.MULTILINE)
+    if m and m.start() > 0:
+        logger.info("[REPOLISH] preamble_stripped chars=%s", m.start())
+        text = text[m.start() :]
+    return text
 
 
 def generate_summary(client: OpenAI, content: str) -> str:
