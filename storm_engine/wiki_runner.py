@@ -13,6 +13,15 @@ from storm_engine.outline_generator import generate_outline_from_notices
 logger = logging.getLogger(__name__)
 
 
+class _WikipediaPersonaErrorFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        return not ("Error occurs when processing" in msg and "wikipedia.org" in msg)
+
+
+logging.getLogger().addFilter(_WikipediaPersonaErrorFilter())
+
+
 def clean_title(raw: str) -> str:
     return raw.rstrip("}").strip()
 
