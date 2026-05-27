@@ -6,7 +6,7 @@ import redis
 from openai import OpenAI
 
 from config import pipeline, settings
-from data import db_writer
+from data import db_reader, db_writer
 from data.payload import JobPayload, parse_payload
 from storm_engine import validator, wiki_generator
 from storm_engine.llm_config import setup_llms
@@ -67,8 +67,55 @@ def process_job(payload: JobPayload, lm_configs, openai_client: OpenAI) -> None:
         )
 
         stage_started = time.perf_counter()
+        logger.info("[STAGE_START] job=%s stage=embedding", job.id)
+        embedding = wiki_generator.compute_embedding(
+            openai_client, payload.document.body_text
+        )
+        logger.info(
+            "[STAGE_DONE] job=%s stage=embedding elapsed=%.2fs dimensions=%s",
+            job.id,
+            time.perf_counter() - stage_started,
+            len(embedding),
+        )
+
+        stage_started = time.perf_counter()
+        logger.info("[STAGE_START] job=%s stage=knn_lookup", job.id)
+        with db_writer.transaction() as conn:
+            neighbors = db_reader.find_similar_chunks(
+                conn,
+                embedding=embedding,
+                k=pipeline.KNN_CLUSTER_K,
+                similarity_threshold=pipeline.CLUSTER_THRESHOLD,
+                exclude_source_document_id=job.source_document_id,
+            )
+            neighbor_chunk_ids = [n.chunk_id for n in neighbors]
+            target_wiki_id = db_reader.find_target_wiki_for_chunks(
+                conn, neighbor_chunk_ids
+            )
+            exclude_wiki_ids = [target_wiki_id] if target_wiki_id else []
+            related_wikis = db_reader.find_related_wikis(
+                conn,
+                embedding=embedding,
+                k=pipeline.RELATED_WIKI_K,
+                min_similarity=pipeline.RELATED_WIKI_MIN_SIMILARITY,
+                max_similarity=pipeline.RELATED_WIKI_MAX_SIMILARITY,
+                exclude_wiki_ids=exclude_wiki_ids,
+            )
+        logger.info(
+            "[STAGE_DONE] job=%s stage=knn_lookup elapsed=%.2fs neighbors=%s "
+            "target_wiki=%s related=%s",
+            job.id,
+            time.perf_counter() - stage_started,
+            len(neighbors),
+            target_wiki_id,
+            len(related_wikis),
+        )
+
+        stage_started = time.perf_counter()
         logger.info("[STAGE_START] job=%s stage=generate_wiki", job.id)
-        wiki = wiki_generator.generate_wiki(payload, lm_configs, openai_client)
+        wiki = wiki_generator.generate_wiki(
+            payload, neighbors, related_wikis, lm_configs, openai_client
+        )
         logger.info(
             "[STAGE_DONE] job=%s stage=generate_wiki elapsed=%.2fs",
             job.id,
@@ -119,23 +166,54 @@ def process_job(payload: JobPayload, lm_configs, openai_client: OpenAI) -> None:
             )
 
         stage_started = time.perf_counter()
+        logger.info("[STAGE_START] job=%s stage=wiki_embedding", job.id)
+        wiki_embedding = wiki_generator.compute_embedding(
+            openai_client, wiki["content_markdown"]
+        )
+        wiki_content_hash = wiki_generator.compute_content_hash(
+            wiki["content_markdown"]
+        )
+        logger.info(
+            "[STAGE_DONE] job=%s stage=wiki_embedding elapsed=%.2fs dimensions=%s",
+            job.id,
+            time.perf_counter() - stage_started,
+            len(wiki_embedding),
+        )
+
+        stage_started = time.perf_counter()
         logger.info("[STAGE_START] job=%s stage=db_write", job.id)
         with db_writer.transaction() as conn:
-            db_writer.insert_chunk_with_embedding(
+            own_chunk_id = db_writer.insert_chunk_with_embedding(
                 conn,
                 source_document_id=job.source_document_id,
-                content_text=wiki["chunk_content"],
-                embedding=wiki["embedding"],
+                content_text=payload.document.body_text,
+                embedding=embedding,
             )
-            slug = db_writer.make_unique_slug(conn, wiki["slug_base"])
-            db_writer.insert_wiki(
-                conn,
-                title=wiki["title"],
-                slug=slug,
-                summary=wiki["summary"],
-                content_markdown=wiki["content_markdown"],
-                generation_model=settings.SYNTHESIS_MODEL,
-            )
+            all_chunk_ids = [str(own_chunk_id), *neighbor_chunk_ids]
+            if target_wiki_id:
+                db_writer.insert_wiki_revision(
+                    conn,
+                    wiki_document_id=target_wiki_id,
+                    summary=wiki["summary"],
+                    content_markdown=wiki["content_markdown"],
+                    generation_model=settings.SYNTHESIS_MODEL,
+                    source_chunk_ids=all_chunk_ids,
+                    wiki_embedding=wiki_embedding,
+                    wiki_content_hash=wiki_content_hash,
+                )
+            else:
+                slug = db_writer.make_unique_slug(conn, wiki["slug_base"])
+                db_writer.insert_wiki(
+                    conn,
+                    title=wiki["title"],
+                    slug=slug,
+                    summary=wiki["summary"],
+                    content_markdown=wiki["content_markdown"],
+                    generation_model=settings.SYNTHESIS_MODEL,
+                    source_chunk_ids=all_chunk_ids,
+                    wiki_embedding=wiki_embedding,
+                    wiki_content_hash=wiki_content_hash,
+                )
             db_writer.mark_job_completed(conn, job.id, job.source_document_id)
         logger.info(
             "[STAGE_DONE] job=%s stage=db_write elapsed=%.2fs",
