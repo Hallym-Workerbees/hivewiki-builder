@@ -1,0 +1,8 @@
+# Indirect dependency via knowledge-storm/dspy-ai
+# LiteLLM is not directly used in this project.
+# No LiteLLM proxy/server/admin endpoints are exposed.
+
+CVE-2026-35030
+CVE-2026-35029
+CVE-2026-42271
+GHSA-69x8-hrgq-fjj8

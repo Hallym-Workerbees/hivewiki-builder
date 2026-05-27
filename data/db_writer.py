@@ -1,0 +1,303 @@
+import logging
+import time
+from contextlib import contextmanager
+
+import psycopg2
+
+from config import settings
+
+logger = logging.getLogger(__name__)
+
+WIKI_STATUS_DONE = "DONE"
+WIKI_STATUS_FAILED = "FAILED"
+EMBEDDING_PROVIDER = "openai"
+
+
+@contextmanager
+def transaction():
+    started = time.perf_counter()
+    conn = psycopg2.connect(settings.DATABASE_DSN)
+    try:
+        with conn:
+            yield conn
+    finally:
+        conn.close()
+        logger.debug(
+            "[DB] transaction_closed elapsed=%.2fs",
+            time.perf_counter() - started,
+        )
+
+
+def _insert_revision_sources(
+    cur, wiki_revision_id: str, source_chunk_ids: list[str]
+) -> None:
+    if not source_chunk_ids:
+        return
+    cur.executemany(
+        "INSERT INTO wiki_revision_sources "
+        "(id, wiki_revision_id, source_chunk_id, created_at) "
+        "VALUES (gen_random_uuid(), %s, %s::uuid, NOW())",
+        [(wiki_revision_id, cid) for cid in source_chunk_ids],
+    )
+
+
+def _upsert_wiki_embedding(
+    cur,
+    *,
+    wiki_document_id: str,
+    wiki_revision_id: str,
+    embedding: list[float],
+    content_hash: str,
+) -> None:
+    embedding_dim = len(embedding)
+    embedding_literal = "[" + ",".join(f"{v:.8f}" for v in embedding) + "]"
+    cur.execute(
+        "INSERT INTO wiki_document_embeddings "
+        "(id, wiki_document_id, wiki_revision_id, embedding_model, embedding_dim, "
+        "embedding, content_hash, provider, created_at, updated_at) "
+        "VALUES (gen_random_uuid(), %s, %s, %s, %s, %s::vector, %s, %s, "
+        "NOW(), NOW()) "
+        "ON CONFLICT (wiki_document_id, embedding_model) DO UPDATE SET "
+        "wiki_revision_id = EXCLUDED.wiki_revision_id, "
+        "embedding = EXCLUDED.embedding, "
+        "embedding_dim = EXCLUDED.embedding_dim, "
+        "content_hash = EXCLUDED.content_hash, "
+        "provider = EXCLUDED.provider, "
+        "updated_at = NOW()",
+        (
+            wiki_document_id,
+            wiki_revision_id,
+            settings.EMBEDDING_MODEL,
+            embedding_dim,
+            embedding_literal,
+            content_hash,
+            EMBEDDING_PROVIDER,
+        ),
+    )
+
+
+def insert_wiki(
+    conn,
+    *,
+    title: str,
+    slug: str,
+    summary: str,
+    content_markdown: str,
+    generation_model: str,
+    source_chunk_ids: list[str],
+    wiki_embedding: list[float],
+    wiki_content_hash: str,
+) -> str:
+    with conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO wiki_documents "
+            "(id, title, slug, summary, status, created_at, updated_at) "
+            "VALUES (gen_random_uuid(), %s, %s, %s, 'published', NOW(), NOW()) "
+            "RETURNING id",
+            (title, slug, summary),
+        )
+        wiki_document_id = cur.fetchone()[0]
+
+        cur.execute(
+            "INSERT INTO wiki_revisions "
+            "(id, wiki_document_id, revision_number, content_markdown, "
+            "generation_type, generation_model, created_at) "
+            "VALUES (gen_random_uuid(), %s, 1, %s, 'ai', %s, NOW()) "
+            "RETURNING id",
+            (wiki_document_id, content_markdown, generation_model),
+        )
+        revision_id = cur.fetchone()[0]
+
+        cur.execute(
+            "UPDATE wiki_documents SET current_revision_id = %s WHERE id = %s",
+            (revision_id, wiki_document_id),
+        )
+
+        _insert_revision_sources(cur, revision_id, source_chunk_ids)
+        _upsert_wiki_embedding(
+            cur,
+            wiki_document_id=wiki_document_id,
+            wiki_revision_id=revision_id,
+            embedding=wiki_embedding,
+            content_hash=wiki_content_hash,
+        )
+
+    logger.info(
+        "[DB] action=insert_wiki wiki_document=%s slug=%s revision=%s sources=%s",
+        wiki_document_id,
+        slug,
+        revision_id,
+        len(source_chunk_ids),
+    )
+    return wiki_document_id
+
+
+def insert_wiki_revision(
+    conn,
+    *,
+    wiki_document_id: str,
+    summary: str,
+    content_markdown: str,
+    generation_model: str,
+    source_chunk_ids: list[str],
+    wiki_embedding: list[float],
+    wiki_content_hash: str,
+) -> str:
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT COALESCE(MAX(revision_number), 0) + 1 "
+            "FROM wiki_revisions WHERE wiki_document_id = %s",
+            (wiki_document_id,),
+        )
+        next_revision_number = cur.fetchone()[0]
+
+        cur.execute(
+            "INSERT INTO wiki_revisions "
+            "(id, wiki_document_id, revision_number, content_markdown, "
+            "generation_type, generation_model, created_at) "
+            "VALUES (gen_random_uuid(), %s, %s, %s, 'ai', %s, NOW()) "
+            "RETURNING id",
+            (
+                wiki_document_id,
+                next_revision_number,
+                content_markdown,
+                generation_model,
+            ),
+        )
+        revision_id = cur.fetchone()[0]
+
+        cur.execute(
+            "UPDATE wiki_documents "
+            "SET current_revision_id = %s, summary = %s, updated_at = NOW() "
+            "WHERE id = %s",
+            (revision_id, summary, wiki_document_id),
+        )
+
+        _insert_revision_sources(cur, revision_id, source_chunk_ids)
+        _upsert_wiki_embedding(
+            cur,
+            wiki_document_id=wiki_document_id,
+            wiki_revision_id=revision_id,
+            embedding=wiki_embedding,
+            content_hash=wiki_content_hash,
+        )
+
+    logger.info(
+        "[DB] action=insert_wiki_revision wiki_document=%s revision=%s "
+        "revision_number=%s sources=%s",
+        wiki_document_id,
+        revision_id,
+        next_revision_number,
+        len(source_chunk_ids),
+    )
+    return revision_id
+
+
+def mark_job_started(conn, job_id: int) -> int:
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE ingestion_jobs SET started_at = NOW() WHERE id = %s",
+            (job_id,),
+        )
+        rowcount = cur.rowcount
+    if rowcount == 0:
+        logger.warning("[WARN] action=mark_job_started job=%s rows=0", job_id)
+    else:
+        logger.info("[DB] action=mark_job_started job=%s rows=%s", job_id, rowcount)
+    return rowcount
+
+
+def slug_exists(conn, slug: str) -> bool:
+    with conn.cursor() as cur:
+        cur.execute("SELECT 1 FROM wiki_documents WHERE slug = %s LIMIT 1", (slug,))
+        return cur.fetchone() is not None
+
+
+def make_unique_slug(conn, base: str) -> str:
+    slug = base
+    suffix = 1
+    while slug_exists(conn, slug):
+        suffix += 1
+        slug = f"{base}-{suffix}"
+    return slug
+
+
+def insert_chunk_with_embedding(
+    conn,
+    *,
+    source_document_id: int,
+    content_text: str,
+    embedding: list[float],
+) -> str:
+    embedding_dim = len(embedding)
+    embedding_literal = "[" + ",".join(f"{v:.8f}" for v in embedding) + "]"
+    with conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO source_chunks "
+            "(id, source_document_id, content_text, chunk_index, created_at) "
+            "VALUES (gen_random_uuid(), %s, %s, 0, NOW()) "
+            "RETURNING id",
+            (source_document_id, content_text),
+        )
+        chunk_id = cur.fetchone()[0]
+        cur.execute(
+            "INSERT INTO chunk_embeddings "
+            "(id, source_chunk_id, embedding, embedding_model, "
+            "embedding_dim, created_at) "
+            "VALUES (gen_random_uuid(), %s, %s::vector, %s, %s, NOW())",
+            (chunk_id, embedding_literal, settings.EMBEDDING_MODEL, embedding_dim),
+        )
+    logger.info(
+        "[DB] action=insert_chunk_embedding source_document=%s chunk=%s dimensions=%s",
+        source_document_id,
+        chunk_id,
+        embedding_dim,
+    )
+    return chunk_id
+
+
+def mark_job_completed(conn, job_id: int, source_document_id: int) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE ingestion_jobs "
+            "SET status = 'COMPLETED', completed_at = NOW(), error_message = NULL "
+            "WHERE id = %s",
+            (job_id,),
+        )
+        job_rows = cur.rowcount
+        cur.execute(
+            "UPDATE source_documents SET wiki_status = %s, body_text = NULL "
+            "WHERE id = %s",
+            (WIKI_STATUS_DONE, source_document_id),
+        )
+        source_rows = cur.rowcount
+    logger.info(
+        "[DB] action=mark_job_completed job=%s source_document=%s job_rows=%s "
+        "source_rows=%s",
+        job_id,
+        source_document_id,
+        job_rows,
+        source_rows,
+    )
+
+
+def mark_job_failed(
+    conn, job_id: int, source_document_id: int, error_message: str
+) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE ingestion_jobs "
+            "SET status = 'FAILED', retry_count = retry_count + 1, "
+            "error_message = %s WHERE id = %s",
+            (error_message, job_id),
+        )
+        cur.execute(
+            "UPDATE source_documents SET wiki_status = %s WHERE id = %s",
+            (WIKI_STATUS_FAILED, source_document_id),
+        )
+    logger.warning(
+        "[DB] action=mark_job_failed job=%s source_document=%s error=%r",
+        job_id,
+        source_document_id,
+        error_message[:500],
+    )
