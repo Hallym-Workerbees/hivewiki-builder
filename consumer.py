@@ -123,6 +123,21 @@ def process_job(payload: JobPayload, lm_configs, openai_client: OpenAI) -> None:
         )
 
         stage_started = time.perf_counter()
+        logger.info("[STAGE_START] job=%s stage=wiki_embedding", job.id)
+        wiki_embedding = wiki_generator.compute_embedding(
+            openai_client, wiki["content_markdown"]
+        )
+        wiki_content_hash = wiki_generator.compute_content_hash(
+            wiki["content_markdown"]
+        )
+        logger.info(
+            "[STAGE_DONE] job=%s stage=wiki_embedding elapsed=%.2fs dimensions=%s",
+            job.id,
+            time.perf_counter() - stage_started,
+            len(wiki_embedding),
+        )
+
+        stage_started = time.perf_counter()
         logger.info("[STAGE_START] job=%s stage=db_write", job.id)
         with db_writer.transaction() as conn:
             own_chunk_id = db_writer.insert_chunk_with_embedding(
@@ -140,6 +155,8 @@ def process_job(payload: JobPayload, lm_configs, openai_client: OpenAI) -> None:
                     content_markdown=wiki["content_markdown"],
                     generation_model=settings.SYNTHESIS_MODEL,
                     source_chunk_ids=all_chunk_ids,
+                    wiki_embedding=wiki_embedding,
+                    wiki_content_hash=wiki_content_hash,
                 )
             else:
                 slug = db_writer.make_unique_slug(conn, wiki["slug_base"])
@@ -151,6 +168,8 @@ def process_job(payload: JobPayload, lm_configs, openai_client: OpenAI) -> None:
                     content_markdown=wiki["content_markdown"],
                     generation_model=settings.SYNTHESIS_MODEL,
                     source_chunk_ids=all_chunk_ids,
+                    wiki_embedding=wiki_embedding,
+                    wiki_content_hash=wiki_content_hash,
                 )
             db_writer.mark_job_completed(conn, job.id, job.source_document_id)
         logger.info(

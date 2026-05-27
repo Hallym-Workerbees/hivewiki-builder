@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 WIKI_STATUS_DONE = "DONE"
 WIKI_STATUS_FAILED = "FAILED"
+EMBEDDING_PROVIDER = "openai"
 
 
 @contextmanager
@@ -40,6 +41,41 @@ def _insert_revision_sources(
     )
 
 
+def _upsert_wiki_embedding(
+    cur,
+    *,
+    wiki_document_id: str,
+    wiki_revision_id: str,
+    embedding: list[float],
+    content_hash: str,
+) -> None:
+    embedding_dim = len(embedding)
+    embedding_literal = "[" + ",".join(f"{v:.8f}" for v in embedding) + "]"
+    cur.execute(
+        "INSERT INTO wiki_document_embeddings "
+        "(id, wiki_document_id, wiki_revision_id, embedding_model, embedding_dim, "
+        "embedding, content_hash, provider, created_at, updated_at) "
+        "VALUES (gen_random_uuid(), %s, %s, %s, %s, %s::vector, %s, %s, "
+        "NOW(), NOW()) "
+        "ON CONFLICT (wiki_document_id, embedding_model) DO UPDATE SET "
+        "wiki_revision_id = EXCLUDED.wiki_revision_id, "
+        "embedding = EXCLUDED.embedding, "
+        "embedding_dim = EXCLUDED.embedding_dim, "
+        "content_hash = EXCLUDED.content_hash, "
+        "provider = EXCLUDED.provider, "
+        "updated_at = NOW()",
+        (
+            wiki_document_id,
+            wiki_revision_id,
+            settings.EMBEDDING_MODEL,
+            embedding_dim,
+            embedding_literal,
+            content_hash,
+            EMBEDDING_PROVIDER,
+        ),
+    )
+
+
 def insert_wiki(
     conn,
     *,
@@ -49,6 +85,8 @@ def insert_wiki(
     content_markdown: str,
     generation_model: str,
     source_chunk_ids: list[str],
+    wiki_embedding: list[float],
+    wiki_content_hash: str,
 ) -> str:
     with conn.cursor() as cur:
         cur.execute(
@@ -76,6 +114,13 @@ def insert_wiki(
         )
 
         _insert_revision_sources(cur, revision_id, source_chunk_ids)
+        _upsert_wiki_embedding(
+            cur,
+            wiki_document_id=wiki_document_id,
+            wiki_revision_id=revision_id,
+            embedding=wiki_embedding,
+            content_hash=wiki_content_hash,
+        )
 
     logger.info(
         "[DB] action=insert_wiki wiki_document=%s slug=%s revision=%s sources=%s",
@@ -95,6 +140,8 @@ def insert_wiki_revision(
     content_markdown: str,
     generation_model: str,
     source_chunk_ids: list[str],
+    wiki_embedding: list[float],
+    wiki_content_hash: str,
 ) -> str:
     with conn.cursor() as cur:
         cur.execute(
@@ -127,6 +174,13 @@ def insert_wiki_revision(
         )
 
         _insert_revision_sources(cur, revision_id, source_chunk_ids)
+        _upsert_wiki_embedding(
+            cur,
+            wiki_document_id=wiki_document_id,
+            wiki_revision_id=revision_id,
+            embedding=wiki_embedding,
+            content_hash=wiki_content_hash,
+        )
 
     logger.info(
         "[DB] action=insert_wiki_revision wiki_document=%s revision=%s "

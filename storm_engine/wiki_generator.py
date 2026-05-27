@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import re
 import shutil
@@ -28,6 +29,10 @@ def compute_embedding(client: OpenAI, text: str) -> list[float]:
         input=text[:EMBEDDING_INPUT_MAX_CHARS],
     )
     return resp.data[0].embedding
+
+
+def compute_content_hash(text: str) -> str:
+    return hashlib.sha256(text[:EMBEDDING_INPUT_MAX_CHARS].encode("utf-8")).hexdigest()
 
 
 def generate_summary(client: OpenAI, content: str) -> str:

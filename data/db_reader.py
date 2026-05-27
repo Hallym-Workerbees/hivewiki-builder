@@ -119,18 +119,14 @@ def find_related_wikis(
     with conn.cursor() as cur:
         cur.execute(
             "SELECT wd.id, wd.title, wd.slug, "
-            "1 - MIN(ce.embedding <=> %s::vector) AS similarity "
-            "FROM chunk_embeddings ce "
-            "JOIN source_chunks sc ON ce.source_chunk_id = sc.id "
-            "JOIN wiki_revision_sources wrs ON wrs.source_chunk_id = sc.id "
-            "JOIN wiki_revisions wr ON wrs.wiki_revision_id = wr.id "
-            "JOIN wiki_documents wd ON wr.wiki_document_id = wd.id "
-            "WHERE ce.embedding_model = %s "
+            "1 - (wde.embedding <=> %s::vector) AS similarity "
+            "FROM wiki_document_embeddings wde "
+            "JOIN wiki_documents wd ON wde.wiki_document_id = wd.id "
+            "WHERE wde.embedding_model = %s "
             "AND wd.status = 'published' "
             "AND wd.id <> ALL(%s::uuid[]) "
-            "GROUP BY wd.id, wd.title, wd.slug "
-            "HAVING 1 - MIN(ce.embedding <=> %s::vector) BETWEEN %s AND %s "
-            "ORDER BY MIN(ce.embedding <=> %s::vector) "
+            "AND 1 - (wde.embedding <=> %s::vector) BETWEEN %s AND %s "
+            "ORDER BY wde.embedding <=> %s::vector "
             "LIMIT %s",
             (
                 vector,
