@@ -30,15 +30,17 @@ flowchart TD
     A([Redis 큐]) --> B
     subgraph STORM["STORM 엔진"]
       direction TB
-      B["① 관점 발견"] --> C
-      C["② 대화 시뮬레이션"] --> D
-      D["③ 아웃라인 생성"] --> E
-      E["④ 본문 작성"] --> F
-      F["⑤ 다듬기 + 인용 치환"]
+      B["① 관점 발견"] --> C["② 대화 시뮬레이션"]
+      C --> D["③ 아웃라인 생성"]
+      D --> E["④ 본문 작성"]
+      E --> F["⑤ 다듬기 + 인용 치환"]
     end
     F --> G([위키 마크다운])
     G --> H["⑥ 요약 + 임베딩"]
     H --> I[("PostgreSQL")]
+
+    G -. 검증 요청 .-> V[/"⑦ 검증 에이전트"\]
+    V -. "실패 시 재폴리시" .-> F
 ```
 
 각 단계의 세부 동작은 다음과 같습니다.
@@ -49,6 +51,7 @@ flowchart TD
 4. **본문 작성** — Synthesis LM(Claude)이 섹션별 본문을 한국어로 작성합니다. 영어 instruction이 LM에 그대로 전달되지 않도록 `ClaudeModel`의 `system` kwarg로 한국어 작성을 강제합니다.
 5. **다듬기 및 인용 치환** — `runner.run(remove_duplicate=True)`로 lexical 중복을 제거한 폴리싱 본문을 받고, `[N]` 인용을 `url_to_info.json` 매핑으로 `[출처: 제목](URL)`로 치환합니다.
 6. **요약 · 임베딩** — Agent LM이 위키 본문을 2~3문장으로 요약하고, OpenAI 임베딩으로 원문 벡터를 생성합니다.
+7. **검증 에이전트** — 메인 파이프라인과 분리된 신뢰성 확보 레이어입니다. 룰베이스(인용 정합성, 빈 섹션)와 LLM(`gpt-4o-mini`, 수치·고유명사 정확성)으로 hallucination을 탐지합니다. 검증 모델을 본문 생성(Claude)과 다른 모델로 분리해 self-eval bias를 회피합니다. 문제 발견 시 발견된 문제만 수정하도록 Synthesis LM(Claude)에 피드백 prompt로 ⑤ 다듬기 단계를 재실행하며, 최대 1회 재시도 후 결과를 저장(best-effort)합니다. 무한 루프와 비결정성 누적을 피하기 위한 정책이며, `ENABLE_VALIDATION=0` 환경변수로 끌 수 있습니다.
 
 산출물은 모두 PostgreSQL에 저장됩니다 — `wiki_documents`, `wiki_revisions`, `source_chunks`, `chunk_embeddings`.
 
