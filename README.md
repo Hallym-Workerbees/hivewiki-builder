@@ -1,5 +1,7 @@
 # HiveWiki Builder
 
+🏆 2026학년도 1학기 한림대학교 SW캡스톤디자인 경진대회 금상 수상 프로젝트
+
 HiveWiki Builder는 HiveWiki 캡스톤 프로젝트의 **AI 파이프라인 서비스**입니다.
 Redis 큐로 전달된 학사 공지를 [STORM](https://github.com/stanford-oval/storm) 엔진으로 한국어 위키 문서로 변환하고,
 원문 임베딩과 요약을 함께 PostgreSQL에 적재합니다.
